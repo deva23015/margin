@@ -5,7 +5,7 @@
 
 <div align="center">
 
-<img src="icons/icon128.png" alt="Margin logo" width="96" height="96">
+
 
 # Margin
 
@@ -50,10 +50,6 @@ Copy-pasting into a translator breaks your flow, and most tools never tell you w
 **Supported languages:** English, Hindi, Spanish, French, German, Bengali, Tamil, Telugu, Marathi, Urdu.
 
 <!-- Add screenshots here, e.g. docs/selection-card.png and docs/page-guide.png -->
-<p align="center">
-  <img src="docs/selection-card.png" alt="Selection toolbar and result card" width="48%">
-  <img src="docs/page-guide.png" alt="Page guide overlay" width="48%">
-</p>
 
 ## Quick start
 
