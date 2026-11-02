@@ -661,7 +661,7 @@
             (r) => (r.words?.length ? wordsSection(r.words) : null));
         }
       } else if (resp?.needsKey) {
-        out.textContent = resp.message || "This needs an Anthropic API key. Click the Margin icon in your toolbar, open Settings and paste it in.";
+        out.textContent = resp.message || "This needs a Gemini API key. Click the Margin icon in your toolbar, open Settings and paste it in.";
       } else {
         out.textContent = resp?.error || "Something went wrong. Try again.";
       }

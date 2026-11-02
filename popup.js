@@ -16,12 +16,12 @@ let lastLang = "";
 let lastText = "";
 
 async function loadSettings() {
-  const s = await chrome.storage.local.get({ preferredLanguage: "en-US", apiKey: "", model: "" });
+  const s = await chrome.storage.local.get({ preferredLanguage: "en-US", geminiKey: "", geminiModel: "" });
   $("language").value = s.preferredLanguage;
   $("targetLang").value = s.preferredLanguage;
-  $("key").value = s.apiKey;
-  $("model").value = s.model;
-  updateState(!!s.apiKey);
+  $("key").value = s.geminiKey;
+  $("model").value = s.geminiModel;
+  updateState(!!s.geminiKey);
 }
 
 function updateState(hasKey) {
@@ -92,7 +92,7 @@ async function runAsk(action, text) {
     const extra = await extrasFor(text, resp);
     if (extra) showResult(resp.text + extra + note, { playable: true });
   } else if (resp?.needsKey) {
-    showResult(resp.message || "Add your Anthropic API key in Settings below.");
+    showResult(resp.message || "Add your Gemini API key in Settings below.");
     $("settings").open = true;
     $("key").focus();
   } else showResult(resp?.error || "Something went wrong. Try again.");
@@ -141,8 +141,8 @@ $("targetLang").addEventListener("change", () => { if (lastText) runAsk("transla
 $("save").addEventListener("click", async () => {
   const apiKey = $("key").value.trim();
   await chrome.storage.local.set({
-    apiKey,
-    model: $("model").value.trim(),
+    geminiKey: apiKey,
+    geminiModel: $("model").value.trim(),
     preferredLanguage: $("language").value,
   });
   updateState(!!apiKey);

@@ -16,7 +16,7 @@
     "offscreen"
   ],
   "host_permissions": [
-    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "https://api.mymemory.translated.net/*",
     "https://api.dictionaryapi.dev/*",
     "https://*.wikipedia.org/*",
@@ -53,4 +53,4 @@
       "run_at": "document_idle"
     }
   ]
-}
+}

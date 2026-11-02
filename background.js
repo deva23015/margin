@@ -1,5 +1,5 @@
 const MENU_ID = "margin-explain-page";
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 
 const LANGUAGE_NAMES = {
   "en-US": "English", "hi-IN": "Hindi", "es-ES": "Spanish", "fr-FR": "French",
@@ -89,44 +89,58 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
-/* ---------- Anthropic API ---------- */
+/* ---------- Google Gemini API ---------- */
 
-async function callClaude({ system, user, maxTokens }) {
-  const { apiKey, model } = await chrome.storage.local.get(["apiKey", "model"]);
-  if (!apiKey) return { needsKey: true };
+async function callGemini({ system, user, maxTokens }) {
+  const { geminiKey, geminiModel } = await chrome.storage.local.get(["geminiKey", "geminiModel"]);
+  if (!geminiKey) return { needsKey: true };
+  const model = String(geminiModel || DEFAULT_MODEL).replace(/^models\//, "");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+
+  const send = (withThinking) => fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": geminiKey },
+    signal: AbortSignal.timeout(40000),
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      // Thinking counts toward the output limit, so leave headroom and keep it short for speed.
+      generationConfig: {
+        maxOutputTokens: maxTokens + 2048,
+        ...(withThinking ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+      },
+    }),
+  });
 
   let res;
   try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: model || DEFAULT_MODEL,
-        max_tokens: maxTokens,
-        system,
-        messages: [{ role: "user", content: user }],
-      }),
-    });
-  } catch {
-    return { error: "Couldn't reach Anthropic. Check your internet connection." };
+    res = await send(true);
+    // Some models don't accept the thinking setting: retry once without it.
+    if (res.status === 400) {
+      const msg = (await res.clone().json().catch(() => null))?.error?.message || "";
+      if (/thinking/i.test(msg)) res = await send(false);
+    }
+  } catch (e) {
+    if (e?.name === "TimeoutError") return { error: "Gemini took too long to answer (over 40 seconds). Try again, or pick a lighter model like gemini-3.5-flash-lite in Margin's settings." };
+    return { error: "Couldn't reach Google Gemini. Check your internet connection." };
   }
 
   if (!res.ok) {
     let detail = "";
     try { detail = (await res.json())?.error?.message || ""; } catch {}
-    if (res.status === 401) return { error: "Anthropic rejected the API key. Check it in Margin's settings." };
+    if (res.status === 401 || res.status === 403 || (res.status === 400 && /api key/i.test(detail)))
+      return { error: "Google rejected the Gemini API key. Check it in Margin's settings." };
     if (res.status === 404) return { error: "That model name wasn't found. Check the model in Margin's settings." };
-    if (res.status === 429) return { error: "Rate limit reached. Wait a moment and try again." };
-    return { error: `Anthropic returned an error (${res.status})${detail ? ": " + detail : ""}` };
+    if (res.status === 429) return { error: "Gemini rate limit reached. Wait a moment and try again." };
+    return { error: `Gemini returned an error (${res.status})${detail ? ": " + detail : ""}` };
   }
 
   const data = await res.json();
-  const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  const text = (data.candidates?.[0]?.content?.parts || [])
+    .filter((p) => !p.thought && typeof p.text === "string")
+    .map((p) => p.text)
+    .join("");
+  if (!text.trim()) return { error: "Gemini didn't return an answer (it may have been blocked or cut off). Try again." };
   return { text };
 }
 
@@ -326,7 +340,7 @@ async function localExplain(text, code) {
 async function askFree({ task, text, targetLang }) {
   const trimmed = String(text || "").trim();
   const short = byteLength(trimmed) <= FREE_MAX_BYTES;
-  const tooLong = { ok: false, needsKey: true, message: "This text is too long for free mode. Add an Anthropic API key in Margin's settings (the toolbar icon) to handle longer text." };
+  const tooLong = { ok: false, needsKey: true, message: "This text is too long for free mode. Add a Gemini API key in Margin's settings (the toolbar icon) to handle longer text." };
   const { preferredLanguage } = await chrome.storage.local.get({ preferredLanguage: "en-US" });
   // Translate can target any language picked on the card; everything else follows the saved language.
   const tCode = task === "translate" && LANGUAGE_NAMES[targetLang] ? targetLang : preferredLanguage;
@@ -377,8 +391,8 @@ async function askFree({ task, text, targetLang }) {
     } catch (e) {
       if (e.message !== "same") throw e;
       return { ok: false, needsKey: true, message: setup
-        ? "Turn on on-device AI in Margin's settings (free, one-time download) to explain sentences, or add an Anthropic API key."
-        : "Explaining a sentence in your own language needs an Anthropic API key, or Chrome's on-device AI, which this browser or computer doesn't have available." };
+        ? "Turn on on-device AI in Margin's settings (free, one-time download) to explain sentences, or add a Gemini API key."
+        : "Explaining a sentence in your own language needs a Gemini API key, or Chrome's on-device AI, which this browser or computer doesn't have available." };
     }
   } catch (e) {
     if (e.message === "same") return { ok: false, error: `That text already looks like it's in ${lang}.` };
@@ -387,8 +401,8 @@ async function askFree({ task, text, targetLang }) {
 }
 
 async function ask(msg) {
-  const { apiKey } = await chrome.storage.local.get("apiKey");
-  return apiKey ? askClaude(msg) : askFree(msg);
+  const { geminiKey } = await chrome.storage.local.get("geminiKey");
+  return geminiKey ? askGemini(msg) : askFree(msg);
 }
 
 const WORDS_RULE = (lang) =>
@@ -417,7 +431,7 @@ function parseWithWords(raw) {
   return { text: cleaned, words: [] };
 }
 
-async function askClaude({ task, text, pageTitle, targetLang }) {
+async function askGemini({ task, text, pageTitle, targetLang }) {
   const lang = task === "translate" && LANGUAGE_NAMES[targetLang] ? LANGUAGE_NAMES[targetLang] : await languageName();
   const trimmed = String(text || "").trim();
   const multi = /\s/.test(trimmed);
@@ -434,7 +448,7 @@ async function askClaude({ task, text, pageTitle, targetLang }) {
   }
   const user = `Page title: ${String(pageTitle || "").slice(0, 120)}\n<text>\n${trimmed.slice(0, 2000)}\n</text>`;
 
-  const r = await callClaude({ system, user, maxTokens: multi ? 1500 : 1000 });
+  const r = await callGemini({ system, user, maxTokens: multi ? 1500 : 1000 });
   if (r.needsKey) return { ok: false, needsKey: true };
   if (r.error) return { ok: false, error: r.error };
   if (!multi) return { ok: true, text: r.text.trim() };
@@ -445,7 +459,7 @@ async function askClaude({ task, text, pageTitle, targetLang }) {
 async function analyze(payload) {
   const lang = await languageName();
   const system = `${GUIDE_PROMPT}\n- Write every text value in ${lang}.`;
-  const r = await callClaude({ system, user: JSON.stringify(payload), maxTokens: 3000 });
+  const r = await callGemini({ system, user: JSON.stringify(payload), maxTokens: 3000 });
   if (r.needsKey) return { ok: false, needsKey: true };
   if (r.error) return { ok: false, error: r.error };
 
