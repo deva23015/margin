@@ -121,9 +121,44 @@ Chrome Extension (Manifest V3) · vanilla JavaScript, no build step · Google Ge
 - Free translation is limited to roughly 450 bytes of text per request.
 - On-device AI answers in English, Spanish, French or German; other languages get a translated answer.
 
-## Team
+## 👥 Meet the Team
 
-Built for a hackathon by **Ghostriderzz**: add names and links here.
+<div align="center">
+
+### Built with creativity, collaboration and a shared vision.
+
+**Team Ghostriders** — the minds behind Margin.
+
+We believe technology should make the internet more accessible, understandable and inclusive for everyone.
+
+</div>
+
+---
+
+<div align="center">
+
+| Team Member | Role |
+|:---:|:---:|
+| **Advait** | Project Leader |
+| **Devansh** | Frontend Development |
+| **Omkar** | API deployement |
+| **Atishay** | AI & Feature Development |
+
+</div>
+
+### 🤝 Our Mission
+
+We came together to build Margin — a browser companion designed to break language barriers and make the web easier for everyone to navigate.
+
+**One team. One vision. A more accessible web.**
+
+---
+
+<div align="center">
+
+**Made with ❤️ by Team Ghostriders**
+
+</div>
 
 ## License
 
