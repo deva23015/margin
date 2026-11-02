@@ -5,7 +5,7 @@
 
 <div align="center">
 
-<img src="icons/icon128.png" alt="Margin logo" width="96" height="96">
+
 
 # Margin
 
