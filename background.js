@@ -78,6 +78,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     analyze(msg.payload).then(sendResponse);
     return true;
   }
+  if (msg?.type === "WIKI") {
+    wikiLookup(msg).then(sendResponse).catch(() => sendResponse({ ok: false, items: [] }));
+    return true;
+  }
+  if (msg?.type === "WORDS") {
+    freeWords(msg.text).then(sendResponse).catch(() => sendResponse({ ok: false, words: [] }));
+    return true;
+  }
   return false;
 });
 
@@ -148,16 +156,151 @@ async function freeTranslate(text, target) {
   return out;
 }
 
-async function freeDefine(word) {
-  const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.toLowerCase())}`);
+async function freeDefine(word, max = 3) {
+  const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word.toLowerCase())}`, {
+    signal: AbortSignal.timeout(6000),
+  });
   if (!res.ok) return null;
   const data = await res.json();
   const lines = [];
-  for (const m of (data[0]?.meanings || []).slice(0, 3)) {
+  for (const m of (data[0]?.meanings || []).slice(0, max)) {
     const d = m.definitions?.[0]?.definition;
     if (d) lines.push(`${m.partOfSpeech}: ${d}`);
   }
   return lines.length ? lines.join("\n") : null;
+}
+
+/* ---------- tricky words in longer text (free mode) ---------- */
+
+// Long words are the likeliest to be hard. These long-but-easy ones are skipped.
+const EASY_LONG = new Set((
+  "something everything anything everyone everybody different important together because through however " +
+  "between another children sometimes remember understand following including problem question tomorrow yesterday " +
+  "morning evening beautiful wonderful actually probably especially government community available possible " +
+  "information different education according although whatever whenever wherever themselves yourself himself herself " +
+  "interesting different business country already without nothing against around during before should thought " +
+  "brought believe happened becoming starting changing looking working thinking"
+).split(/\s+/));
+
+async function freeWords(text) {
+  const seen = new Set();
+  const candidates = [];
+  for (const w of String(text || "").slice(0, 2000).match(/[A-Za-z][A-Za-z'-]{6,}/g) || []) {
+    const k = w.toLowerCase().replace(/^'+|'+$/g, "");
+    if (k.length < 8 || EASY_LONG.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    candidates.push(k);
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  const picked = candidates.slice(0, 6);
+  const found = await Promise.all(picked.map(async (word) => {
+    try { return { word, meaning: await freeDefine(word, 1) }; } catch { return null; }
+  }));
+  const words = found.filter((f) => f && f.meaning).slice(0, 4);
+  return { ok: true, words };
+}
+
+/* ---------- single-word meaning from Wikipedia and Wiktionary ---------- */
+
+const WIKI_TIMEOUT = 6000;
+
+// One run of letters (any script), with inner apostrophes or hyphens. Anything else is not a "word" here.
+function singleWord(text) {
+  const t = String(text || "").trim().replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, "");
+  return t.length <= 40 && /^[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*$/u.test(t) ? t : null;
+}
+
+function scriptLang(word, preferred) {
+  if (/[\u0900-\u097F]/.test(word)) return preferred === "mr-IN" ? "mr" : "hi";
+  if (/[\u0980-\u09FF]/.test(word)) return "bn";
+  if (/[\u0B80-\u0BFF]/.test(word)) return "ta";
+  if (/[\u0C00-\u0C7F]/.test(word)) return "te";
+  if (/[\u0600-\u06FF]/.test(word)) return "ur";
+  return null;
+}
+
+// First couple of sentences, so the card stays small.
+function brief(text, max = 320) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("। "));
+  return end > 120 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "") + "…";
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim();
+}
+
+const getJson = async (url) => {
+  const res = await fetch(url, { signal: AbortSignal.timeout(WIKI_TIMEOUT), headers: { accept: "application/json" } });
+  return res.ok ? res.json() : null;
+};
+
+async function wikipediaSummary(lang, word) {
+  const d = await getJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(word)}?redirect=true`);
+  // "standard" skips disambiguation pages ("X may refer to...") and empty stubs.
+  if (!d || d.type !== "standard" || !d.extract) return null;
+  const title = String(d.title || word);
+  return {
+    source: lang === "en" ? "Wikipedia" : `Wikipedia · ${lang}`,
+    title,
+    description: String(d.description || "").slice(0, 120),
+    text: brief(d.extract),
+    url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`,
+  };
+}
+
+async function wiktionaryMeaning(lang, word) {
+  for (const w of new Set([word, word.toLowerCase()])) {
+    let d;
+    try { d = await getJson(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(w)}`); }
+    catch { d = null; }
+    if (!d || typeof d !== "object") continue;
+    const entries = d[lang] || d.en || Object.values(d)[0];
+    const lines = [];
+    for (const e of (Array.isArray(entries) ? entries : []).slice(0, 3)) {
+      const def = stripHtml(e.definitions?.[0]?.definition);
+      if (def) lines.push(`${String(e.partOfSpeech || "").toLowerCase()}: ${brief(def, 160)}`);
+    }
+    if (lines.length) {
+      return {
+        source: "Wiktionary",
+        title: w,
+        description: "",
+        text: lines.join("\n"),
+        url: `https://en.wiktionary.org/wiki/${encodeURIComponent(w)}`,
+      };
+    }
+  }
+  return null;
+}
+
+async function wikiLookup({ text, pageLang }) {
+  const word = singleWord(text);
+  if (!word) return { ok: true, items: [] };
+  const { preferredLanguage } = await chrome.storage.local.get({ preferredLanguage: "en-US" });
+  const script = scriptLang(word, preferredLanguage);
+  const page = String(pageLang || "").toLowerCase().split("-")[0];
+  // Words in another script go to that language's wiki. Latin-script words try the page's language, then English.
+  const langs = script ? [script] : [...new Set([/^[a-z]{2,3}$/.test(page) ? page : null, "en"].filter(Boolean))];
+
+  const wikipedia = (async () => {
+    for (const lang of langs) {
+      try { const r = await wikipediaSummary(lang, word); if (r) return r; } catch {}
+    }
+    return null;
+  })();
+  const wiktionary = wiktionaryMeaning(langs[0], word).catch(() => null);
+
+  const [meaning, article] = await Promise.all([wiktionary, wikipedia]);
+  return { ok: true, items: [meaning, article].filter(Boolean) };
 }
 
 const LOCAL_OUT = { "en-US": "en", "es-ES": "es", "fr-FR": "fr", "de-DE": "de" };
@@ -180,18 +323,20 @@ async function localExplain(text, code) {
   }
 }
 
-async function askFree({ task, text }) {
+async function askFree({ task, text, targetLang }) {
   const trimmed = String(text || "").trim();
   const short = byteLength(trimmed) <= FREE_MAX_BYTES;
   const tooLong = { ok: false, needsKey: true, message: "This text is too long for free mode. Add an Anthropic API key in Margin's settings (the toolbar icon) to handle longer text." };
   const { preferredLanguage } = await chrome.storage.local.get({ preferredLanguage: "en-US" });
-  const lang = LANGUAGE_NAMES[preferredLanguage] || "English";
+  // Translate can target any language picked on the card; everything else follows the saved language.
+  const tCode = task === "translate" && LANGUAGE_NAMES[targetLang] ? targetLang : preferredLanguage;
+  const lang = LANGUAGE_NAMES[tCode] || "English";
   const note = "Free mode. Add an API key in settings for longer text and fuller explanations.";
 
   try {
     if (task === "translate") {
       if (!short) return tooLong;
-      return { ok: true, text: await freeTranslate(trimmed, preferredLanguage), note };
+      return { ok: true, text: await freeTranslate(trimmed, tCode), note };
     }
 
     // Explain: a dictionary for single English words...
@@ -246,18 +391,55 @@ async function ask(msg) {
   return apiKey ? askClaude(msg) : askFree(msg);
 }
 
-async function askClaude({ task, text, pageTitle }) {
-  const lang = await languageName();
-  const system =
-    task === "translate"
-      ? `You translate text. Translate the user's text into ${lang}. If it is already in ${lang}, translate it into English instead. Reply with the translation only: no quotes, notes or preamble. Keep line breaks. ${UNTRUSTED}`
-      : `You help people understand text that is hard for them, whether because of language, jargon or tone. Explain the user's text in ${lang}, in plain friendly words. Use 2 to 5 short sentences. If there is an idiom, technical term or tricky grammar, point out the key one. No headings or bullet lists. ${UNTRUSTED}`;
-  const user = `Page title: ${String(pageTitle || "").slice(0, 120)}\n<text>\n${String(text || "").slice(0, 2000)}\n</text>`;
+const WORDS_RULE = (lang) =>
+  `After that, list up to 5 difficult words, idioms or technical terms taken from the original text that a learner might not know. Skip easy everyday words. Use an empty list if there are none. Write each meaning in ${lang} (or whichever language your answer above is written in), in under 20 words.`;
 
-  const r = await callClaude({ system, user, maxTokens: 1000 });
+// Longer text comes back as JSON so the tricky words can be shown separately, at the end.
+function parseWithWords(raw) {
+  const cleaned = String(raw || "").replace(/```json|```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const o = JSON.parse(cleaned.slice(start, end + 1));
+      if (typeof o.text === "string" && o.text.trim()) {
+        const words = (Array.isArray(o.words) ? o.words : [])
+          .filter((w) => w && w.word && w.meaning)
+          .slice(0, 6)
+          .map((w) => ({ word: String(w.word).slice(0, 60), meaning: String(w.meaning).slice(0, 240) }));
+        return { text: o.text.trim(), words };
+      }
+    } catch {}
+  }
+  // Cut-off reply: rescue whatever text made it through.
+  const m = cleaned.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (m) { try { return { text: JSON.parse('"' + m[1] + '"').trim(), words: [] }; } catch {} }
+  return { text: cleaned, words: [] };
+}
+
+async function askClaude({ task, text, pageTitle, targetLang }) {
+  const lang = task === "translate" && LANGUAGE_NAMES[targetLang] ? LANGUAGE_NAMES[targetLang] : await languageName();
+  const trimmed = String(text || "").trim();
+  const multi = /\s/.test(trimmed);
+  const shape = `Reply with ONLY a JSON object, no markdown fences: {"text": "<your answer, keep line breaks as \\n>", "words": [{"word": "<word as written in the original>", "meaning": "<short meaning>"}]}.`;
+  let system;
+  if (task === "translate") {
+    system = multi
+      ? `You translate text. Translate the user's text into ${lang}. If it is already in ${lang}, translate it into English instead. Put only the translation in "text": no quotes, notes or preamble. ${WORDS_RULE(lang)} ${shape} ${UNTRUSTED}`
+      : `You translate text. Translate the user's text into ${lang}. If it is already in ${lang}, translate it into English instead. Reply with the translation only: no quotes, notes or preamble. Keep line breaks. ${UNTRUSTED}`;
+  } else {
+    system = multi
+      ? `You help people understand text that is hard for them, whether because of language, jargon or tone. Explain the user's text in ${lang}, in plain friendly words, in "text". Use 2 to 5 short sentences, with no headings or bullet lists. ${WORDS_RULE(lang)} ${shape} ${UNTRUSTED}`
+      : `You help people understand text that is hard for them, whether because of language, jargon or tone. Explain the user's text in ${lang}, in plain friendly words. Use 2 to 5 short sentences. If there is an idiom, technical term or tricky grammar, point out the key one. No headings or bullet lists. ${UNTRUSTED}`;
+  }
+  const user = `Page title: ${String(pageTitle || "").slice(0, 120)}\n<text>\n${trimmed.slice(0, 2000)}\n</text>`;
+
+  const r = await callClaude({ system, user, maxTokens: multi ? 1500 : 1000 });
   if (r.needsKey) return { ok: false, needsKey: true };
   if (r.error) return { ok: false, error: r.error };
-  return { ok: true, text: r.text.trim() };
+  if (!multi) return { ok: true, text: r.text.trim() };
+  const { text: out, words } = parseWithWords(r.text);
+  return { ok: true, text: out, words };
 }
 
 async function analyze(payload) {

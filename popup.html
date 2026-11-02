@@ -42,6 +42,10 @@
     </section>
 
     <section id="result" class="result" aria-live="polite" hidden>
+      <div id="resultLang" class="result-lang" hidden>
+        <label for="targetLang">Translate into</label>
+        <select id="targetLang"></select>
+      </div>
       <p id="resultText"></p>
       <div class="result-actions" id="resultActions" hidden>
         <button id="play" type="button" class="ghost">Listen</button>
@@ -70,7 +74,7 @@
           <button id="save" type="button" class="solid">Save</button>
           <span id="saved" role="status"></span>
         </div>
-        <p class="hint">Short text translates and explains for free, with no key. Long text, full explanations and page guides need one. Your key stays in this browser. Free mode sends the selected text to MyMemory and dictionaryapi.dev. With a key, the selected text or the page's title, headings, visible text and button labels go to Anthropic. Anything typed into form fields is never read.</p>
+        <p class="hint">Short text translates and explains for free, with no key. Long text, full explanations and page guides need one. Your key stays in this browser. Free mode sends the selected text to MyMemory and dictionaryapi.dev. Selecting a single word also looks it up on Wikipedia and Wiktionary. With a key, the selected text or the page's title, headings, visible text and button labels go to Anthropic. Anything typed into form fields is never read.</p>
       </div>
     </details>
   </main>

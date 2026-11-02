@@ -6,13 +6,19 @@ const LANGUAGES = [
   ["ta-IN", "Tamil · தமிழ்"], ["te-IN", "Telugu · తెలుగు"], ["mr-IN", "Marathi · मराठी"], ["ur-PK", "Urdu · اردو"],
 ];
 
-for (const [code, name] of LANGUAGES) $("language").add(new Option(name, code));
+for (const [code, name] of LANGUAGES) {
+  $("language").add(new Option(name, code));
+  $("targetLang").add(new Option(name, code));
+}
 
 let lastResult = "";
+let lastLang = "";
+let lastText = "";
 
 async function loadSettings() {
   const s = await chrome.storage.local.get({ preferredLanguage: "en-US", apiKey: "", model: "" });
   $("language").value = s.preferredLanguage;
+  $("targetLang").value = s.preferredLanguage;
   $("key").value = s.apiKey;
   $("model").value = s.model;
   updateState(!!s.apiKey);
@@ -69,22 +75,48 @@ async function onSelection(action) {
     return showResult("Reading the selection aloud on the page.");
   }
 
+  lastText = text;
+  return runAsk(action, text);
+}
+
+async function runAsk(action, text) {
+  const target = action === "translate" ? $("targetLang").value : "";
+  lastLang = target || $("language").value;
   showResult(action === "translate" ? "Translating…" : "Working it out…");
+  $("resultLang").hidden = action !== "translate";
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const resp = await chrome.runtime.sendMessage({ type: "ASK", task: action, text, pageTitle: tab?.title || "" });
-  if (resp?.ok) showResult(resp.text + (resp.note ? "\n\n" + resp.note : ""), { playable: true });
-  else if (resp?.needsKey) {
+  const resp = await chrome.runtime.sendMessage({ type: "ASK", task: action, text, pageTitle: tab?.title || "", targetLang: target });
+  if (resp?.ok) {
+    const note = resp.note ? "\n\n" + resp.note : "";
+    showResult(resp.text + note, { playable: true });
+    const extra = await extrasFor(text, resp);
+    if (extra) showResult(resp.text + extra + note, { playable: true });
+  } else if (resp?.needsKey) {
     showResult(resp.message || "Add your Anthropic API key in Settings below.");
     $("settings").open = true;
     $("key").focus();
   } else showResult(resp?.error || "Something went wrong. Try again.");
 }
 
+// One word: its meaning from Wikipedia/Wiktionary. Longer text: the difficult words, explained at the end.
+async function extrasFor(text, resp) {
+  try {
+    if (!/\s/.test(text.trim())) {
+      const r = await chrome.runtime.sendMessage({ type: "WIKI", text, pageLang: "" });
+      return (r?.items || []).map((it) => `\n\n${it.source}\n${it.text}`).join("");
+    }
+    const words = Array.isArray(resp.words) ? resp.words : (await chrome.runtime.sendMessage({ type: "WORDS", text }))?.words || [];
+    return words.length ? "\n\nTricky words\n" + words.map((w) => `${w.word}: ${w.meaning}`).join("\n") : "";
+  } catch {
+    return "";
+  }
+}
+
 function speakResult() {
   if (!("speechSynthesis" in window) || !lastResult) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(lastResult);
-  u.lang = $("language").value;
+  u.lang = lastLang || $("language").value;
   u.rate = 0.92;
   speechSynthesis.speak(u);
 }
@@ -100,7 +132,11 @@ $("copy").addEventListener("click", async () => {
   setTimeout(() => ($("copy").textContent = "Copy"), 1500);
 });
 
-$("language").addEventListener("change", () => chrome.storage.local.set({ preferredLanguage: $("language").value }));
+$("language").addEventListener("change", () => {
+  chrome.storage.local.set({ preferredLanguage: $("language").value });
+  $("targetLang").value = $("language").value;
+});
+$("targetLang").addEventListener("change", () => { if (lastText) runAsk("translate", lastText); });
 
 $("save").addEventListener("click", async () => {
   const apiKey = $("key").value.trim();

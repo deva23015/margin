@@ -18,6 +18,12 @@
   let rafId = 0;
   let lastSelection = "";
   let askToken = 0;
+  let anchor = null;        // () => rect of the text the card points at
+  let pendingAnchor = null; // captured when the toolbar appears, handed to the card
+  let cardPlace = null;     // "below" | "above"
+  let cardBody = null;
+  let cardKind = "";
+  let cardObserver = null;
 
   /* ---------- small helpers ---------- */
 
@@ -39,7 +45,7 @@
     stop: "M6 6h12v12H6z",
   };
   function icon(name, size = 15) {
-    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
   }
   function iconButton(name, label, cls = "btn") {
     const b = h("button", cls);
@@ -50,6 +56,12 @@
   }
 
   const store = () => chrome.storage.local.get({ preferredLanguage: "en-US" });
+
+  const LANGUAGES = [
+    ["en-US", "English"], ["hi-IN", "Hindi · हिन्दी"], ["es-ES", "Spanish · Español"],
+    ["fr-FR", "French · Français"], ["de-DE", "German · Deutsch"], ["bn-IN", "Bengali · বাংলা"],
+    ["ta-IN", "Tamil · தமிழ்"], ["te-IN", "Telugu · తెలుగు"], ["mr-IN", "Marathi · मराठी"], ["ur-PK", "Urdu · اردو"],
+  ];
 
   /* ---------- selection ---------- */
 
@@ -77,6 +89,28 @@
     if (c && c.selectionStart !== c.selectionEnd) return c.getBoundingClientRect();
     const sel = window.getSelection();
     return sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+  }
+
+  // A live "where is the selection now" function. It keeps working after the selection is lost
+  // (clicking the toolbar or the card can clear it) and follows the text as the page scrolls.
+  function makeAnchor() {
+    const c = activeTextControl();
+    if (c && c.selectionStart !== c.selectionEnd) {
+      return () => {
+        const r = c.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        return { top: r.top, bottom: r.bottom, firstX: x, lastX: x };
+      };
+    }
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0).cloneRange();
+    return () => {
+      const box = range.getBoundingClientRect();
+      const rects = [...range.getClientRects()].filter((r) => r.width || r.height);
+      const first = rects[0] || box, last = rects[rects.length - 1] || box;
+      return { top: box.top, bottom: box.bottom, firstX: first.left + first.width / 2, lastX: last.left + last.width / 2 };
+    };
   }
 
   /* ---------- speech ---------- */
@@ -269,69 +303,101 @@
 
   const CSS = `
   :host{all:initial;
-    --paper:#fbfcfb;--ink:#14202b;--mute:#5b6a75;--line:#d9dfde;--teal:#0e5e6f;--teal-fg:#fff;
-    --soft:#eef3f2;--mark:#ffe066;--warn-bg:#fff1d0;--warn-fg:#6b4300;--shadow:0 10px 32px rgba(10,30,40,.18)}
-  @media (prefers-color-scheme:dark){:host{
-    --paper:#16222b;--ink:#eaf0f1;--mute:#9db0b8;--line:#2b3b46;--teal:#5fc0d3;--teal-fg:#08222a;
-    --soft:#1e2d37;--warn-bg:#3a2d12;--warn-fg:#f3cf86;--shadow:0 10px 32px rgba(0,0,0,.5)}}
+    --ink:#0b0b0f;--paper:#fff;--mute:#2d3240;--line:#0b0b0f;
+    --blue:#2b59ff;--pink:#ff4d94;--yellow:#ffd60a;--cyan:#6fe6ff;--green:#19e68c;--orange:#ffb23f;
+    --shadow:5px 5px 0 var(--ink)}
   *{box-sizing:border-box}
   button{font:inherit;color:inherit;cursor:pointer}
-  button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+  button:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
   .ui{font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
 
-  .toolbar{position:fixed;display:flex;gap:2px;padding:4px;background:var(--ink);border-radius:10px;box-shadow:var(--shadow)}
-  .tb{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:7px;padding:7px 10px;background:transparent;color:var(--paper);font-size:13px;font-weight:550}
-  .tb:hover{background:rgba(255,255,255,.14)}
-  .tb svg{opacity:.9}
+  /* selection toolbar */
+  .toolbar{position:fixed;display:flex;gap:6px;padding:6px;background:var(--paper);border:3px solid var(--ink);border-radius:14px;box-shadow:var(--shadow)}
+  .tb{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--ink);border-radius:9px;padding:6px 11px;color:var(--ink);font-size:13px;font-weight:800;transition:transform .08s,box-shadow .08s}
+  .tb[data-k=translate]{background:var(--blue);color:#fff}
+  .tb[data-k=explain]{background:var(--pink)}
+  .tb[data-k=listen]{background:var(--yellow)}
+  .tb:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink)}
+  .tb:active{transform:translate(1px,1px);box-shadow:none}
 
-  .card,.panel{position:fixed;background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
-  .card{right:16px;bottom:16px;width:340px;max-width:calc(100vw - 32px);padding:14px 16px 12px}
-  .card header,.panel header{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .card h2{margin:0;font-size:13px;font-weight:650;color:var(--mute)}
-  .x{display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--mute)}
-  .x:hover{background:var(--soft);color:var(--ink)}
-  .quote{margin:8px 0 10px;padding:0;color:var(--mute);font-size:12.5px;line-height:1.45;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .quote span{color:var(--ink);text-decoration:underline;text-decoration-color:var(--teal);text-decoration-thickness:2px;text-underline-offset:3px}
-  .mnote{margin:10px 0 0;font-size:12px;color:var(--mute)}
-  .out{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.55;max-height:46vh;overflow:auto}
-  .foot{display:flex;gap:6px;margin-top:12px}
-  .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;border-radius:7px;padding:6px 10px;font-size:12.5px;font-weight:550}
-  .btn:hover{background:var(--soft)}
+  /* shared surfaces */
+  .card,.panel{position:fixed;background:var(--paper);border:3px solid var(--ink);border-radius:16px;box-shadow:var(--shadow)}
+  .x{display:grid;place-items:center;width:30px;height:30px;border:2px solid var(--ink);border-radius:8px;background:var(--paper);color:var(--ink);flex:none}
+  .x:hover{background:var(--ink);color:var(--paper)}
+  .btn{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--ink);background:var(--paper);border-radius:9px;padding:5px 11px;font-size:12.5px;font-weight:800;transition:transform .08s,box-shadow .08s,background .08s}
+  .btn:hover{background:var(--green);transform:translate(-1px,-1px);box-shadow:2px 2px 0 var(--ink)}
+  .load{display:flex;align-items:center;gap:10px;padding:6px 0;font-weight:700}
+  .load.small{font-size:12.5px;margin-top:10px}
+  .spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--ink);border-top-color:var(--pink);animation:s .8s linear infinite;flex:none}
+  .small .spin{width:14px;height:14px;border-width:2px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}.tb,.btn,.item{transition:none}}
 
-  .panel{top:16px;right:16px;width:384px;max-width:calc(100vw - 24px);max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden}
-  .panel>header{padding:12px 12px 12px 16px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none}
+  /* result card, sits next to the selected text */
+  .card{--ax:30px;--hdr:var(--yellow);width:372px;max-width:calc(100vw - 20px);display:flex;flex-direction:column;visibility:hidden}
+  .card.placed{visibility:visible}
+  .card.k-translate{--hdr:var(--blue)}
+  .card.k-explain{--hdr:var(--pink)}
+  .card.k-listen{--hdr:var(--yellow)}
+  .card header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 14px;background:var(--hdr);border-bottom:3px solid var(--ink);border-radius:12px 12px 0 0}
+  .card.k-translate header{color:#fff}
+  .card h2{margin:0;font-size:13.5px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+  .card::before{content:"";display:none;position:absolute;left:var(--ax);width:16px;height:16px;margin-left:-8px;transform:rotate(45deg)}
+  .card.below::before{display:block;top:-11px;background:var(--hdr);border-top:3px solid var(--ink);border-left:3px solid var(--ink)}
+  .card.above::before{display:block;bottom:-11px;background:var(--paper);border-bottom:3px solid var(--ink);border-right:3px solid var(--ink)}
+  .cbody{padding:12px 14px 14px;overflow:auto;max-height:430px}
+  .quote{margin:0 0 10px;font-size:13px;line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .quote span{background:var(--yellow);padding:1px 5px;border-radius:4px;font-weight:700;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+  .out{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.5;font-weight:550}
+  .mnote{margin:10px 0 0;font-size:12px;font-weight:600;color:var(--mute)}
+  .langrow{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12.5px;font-weight:800}
+  .langrow span{white-space:nowrap}
+  .langsel{flex:1;min-width:0;padding:5px 8px;border:2px solid var(--ink);border-radius:9px;background:var(--paper);color:var(--ink);font:inherit;font-weight:700}
+  .foot{display:flex;gap:8px;padding:10px 14px 12px;border-top:3px solid var(--ink)}
+  .foot:empty{display:none}
+
+  /* wiki meaning + tricky words */
+  .sec{margin-top:12px;padding:10px 12px;border:2px solid var(--ink);border-radius:10px;background:var(--cyan)}
+  .sec.tricky{background:var(--orange)}
+  .sec .tag{display:inline-block;margin-bottom:5px;padding:1px 9px;border-radius:99px;background:var(--ink);color:#fff;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+  .sec .desc{margin-bottom:2px;font-size:12px;font-weight:800}
+  .sec p{margin:0 0 4px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.5}
+  .sec a{color:var(--ink);font-size:12.5px;font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+  .words{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .words li{font-size:14px;line-height:1.7}
+  .words b{background:var(--paper);border:2px solid var(--ink);border-radius:7px;padding:0 6px;margin-right:6px;font-weight:800}
+
+  /* page guide panel */
+  .panel{top:16px;right:16px;width:392px;max-width:calc(100vw - 24px);max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden}
+  .panel>header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 10px 10px 16px;background:var(--blue);color:#fff;border-bottom:3px solid var(--ink);cursor:grab;touch-action:none}
   .panel>header:active{cursor:grabbing}
   .brand{display:flex;align-items:baseline;gap:8px}
-  .brand strong{font-size:15px;letter-spacing:-.01em}
-  .brand span{font-size:12px;color:var(--mute)}
-  .badge{margin-left:auto;margin-right:4px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--mute)}
-  .badge.ai{background:var(--mark);color:#3d3200}
+  .brand strong{font-size:18px;font-weight:900;letter-spacing:-.01em}
+  .brand span{font-size:12px;font-weight:600;opacity:.92}
+  .badge{margin-left:auto;margin-right:4px;font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;background:var(--paper);color:var(--ink);border:2px solid var(--ink)}
+  .badge:empty{display:none}
+  .badge.ai{background:var(--green)}
   .pbody{padding:16px;overflow:auto}
-  .summary{margin:0 0 16px;font-size:16px;line-height:1.5;font-weight:500}
-  .note{margin:0 0 14px;padding:9px 12px;border-radius:8px;background:var(--soft);color:var(--mute);font-size:13px}
-  .sel{margin:0 0 16px;padding:9px 12px;border-left:3px solid var(--mark);background:var(--soft);border-radius:0 8px 8px 0;font-size:13.5px}
-  .pbody h3{margin:18px 0 8px;font-size:13px;font-weight:650;color:var(--mute)}
+  .summary{margin:0 0 16px;padding:10px 12px;font-size:15.5px;line-height:1.5;font-weight:650;background:var(--yellow);border:2px solid var(--ink);border-radius:10px}
+  .note{margin:0 0 14px;padding:9px 12px;border:2px solid var(--ink);border-radius:10px;background:var(--cyan);color:var(--ink);font-size:13px;font-weight:600}
+  .sel{margin:0 0 16px;padding:9px 12px;border:2px solid var(--ink);border-left:7px solid var(--pink);background:#ffe0ee;border-radius:0 10px 10px 0;font-size:13.5px}
+  .pbody h3{margin:18px 0 8px;font-size:12px;font-weight:900;letter-spacing:.07em;text-transform:uppercase;color:var(--ink)}
   ol{margin:0;padding:0;list-style:none;counter-reset:s}
-  ol li{counter-increment:s;position:relative;padding:3px 0 3px 30px;margin-bottom:4px;border-radius:6px}
-  ol li::before{content:counter(s);position:absolute;left:0;top:4px;width:21px;height:21px;border-radius:50%;
-    background:var(--soft);color:var(--mute);font-size:12px;font-weight:650;display:grid;place-items:center}
+  ol li{counter-increment:s;position:relative;padding:3px 0 3px 34px;margin-bottom:4px;border-radius:6px;font-weight:550}
+  ol li::before{content:counter(s);position:absolute;left:0;top:3px;width:24px;height:24px;border-radius:50%;
+    background:var(--pink);color:var(--ink);border:2px solid var(--ink);font-size:12px;font-weight:900;display:grid;place-items:center}
   ol li.link{cursor:default}
-  ol li.link:hover{background:var(--soft)}
-  ol li.link:hover::before{background:var(--mark);color:#3d3200}
-  .list{display:flex;flex-direction:column;gap:6px}
-  .item{width:100%;text-align:left;border:1px solid var(--line);background:transparent;border-radius:9px;padding:9px 11px}
-  .item:hover,.item:focus-visible{background:var(--soft);border-color:var(--teal)}
-  .name{display:flex;justify-content:space-between;gap:8px;font-weight:650;font-size:13.5px}
-  .kind{font-weight:500;font-size:12px;color:var(--mute);white-space:nowrap}
-  .exp{margin-top:2px;font-size:13px;color:var(--mute)}
-  .warn{margin-top:6px;padding:5px 8px;border-radius:6px;background:var(--warn-bg);color:var(--warn-fg);font-size:12.5px}
-  .load{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--mute)}
-  .spin{width:15px;height:15px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--teal);animation:s .8s linear infinite}
-  @keyframes s{to{transform:rotate(360deg)}}
-  @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}}
-  .hl{position:fixed;pointer-events:none;display:none;border-radius:5px;background:rgba(255,224,102,.38);
-    outline:2px solid #e0b800;box-shadow:0 0 0 4px rgba(255,224,102,.28)}
+  ol li.link:hover{background:var(--yellow)}
+  ol li.link:hover::before{background:var(--paper)}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .item{width:100%;text-align:left;border:2px solid var(--ink);background:var(--paper);border-radius:10px;padding:9px 11px;transition:transform .08s,box-shadow .08s,background .08s}
+  .item:hover,.item:focus-visible{background:var(--yellow);transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink)}
+  .name{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:800;font-size:13.5px}
+  .kind{font-weight:800;font-size:11px;color:var(--ink);white-space:nowrap;background:var(--cyan);border:2px solid var(--ink);border-radius:99px;padding:0 8px}
+  .exp{margin-top:3px;font-size:13px;color:var(--mute);font-weight:500}
+  .warn{margin-top:7px;padding:5px 9px;border:2px solid var(--ink);border-radius:7px;background:var(--orange);color:var(--ink);font-size:12.5px;font-weight:650}
+  .hl{position:fixed;pointer-events:none;display:none;border-radius:6px;background:rgba(255,214,10,.5);
+    outline:3px solid #0b0b0f;box-shadow:0 0 0 6px #ff4d94}
   `;
 
   function ensureHost() {
@@ -362,11 +428,13 @@
     if (!rect || (!rect.width && !rect.height)) return;
     ensureHost();
     lastSelection = text;
+    pendingAnchor = makeAnchor();
     toolbar = h("div", "ui toolbar");
     toolbar.setAttribute("role", "toolbar");
     toolbar.setAttribute("aria-label", "Margin");
     for (const [key, label] of [["translate", "Translate"], ["explain", "Explain"], ["listen", "Listen"]]) {
       const b = iconButton(key, label, "tb");
+      b.dataset.k = key;
       b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the selection alive
       b.addEventListener("click", (e) => { e.stopPropagation(); runAction(key, text); });
       toolbar.append(b);
@@ -384,14 +452,62 @@
 
   function closeCard() {
     askToken++;
+    if (cardKind === "listen") speechSynthesis.cancel();
+    cardObserver?.disconnect();
+    cardObserver = null;
     card?.remove();
     card = null;
+    anchor = null;
   }
 
-  function openCard(title, original) {
+  // Puts the card beside the selected text: under it when there's room, otherwise above, with an
+  // arrow pointing at the text. Called again on scroll, resize and whenever the card changes size.
+  function placeCard() {
+    if (!card) return;
+    const vw = window.innerWidth, vh = window.innerHeight, m = 10, gap = 14;
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    const a = anchor && anchor();
+    if (!a) { // no selection to point at: bottom-right corner
+      card.classList.remove("below", "above");
+      card.style.left = Math.max(m, vw - cw - 16) + "px";
+      card.style.top = Math.max(m, vh - ch - 16) + "px";
+      card.classList.add("placed");
+      return;
+    }
+    if (a.bottom < 0 || a.top > vh) { card.classList.remove("placed"); return; } // selection scrolled out of view
+
+    // Pick a side once and stay on it, so the card doesn't jump as its content loads. It only swaps
+    // if scrolling leaves almost no room on that side. Whatever room there is, the card body fits
+    // into it and scrolls inside.
+    const room = { below: vh - a.bottom - gap - m, above: a.top - gap - m };
+    const other = { below: "above", above: "below" };
+    if (!cardPlace) cardPlace = room.below >= 340 || room.below >= room.above ? "below" : "above";
+    else if (room[cardPlace] < 200 && room[other[cardPlace]] > room[cardPlace]) cardPlace = other[cardPlace];
+    const chrome = card.offsetHeight - cardBody.offsetHeight; // header, footer and borders
+    cardBody.style.maxHeight = Math.max(120, Math.min(430, room[cardPlace] - chrome)) + "px";
+    const ch2 = card.offsetHeight;
+
+    const x = cardPlace === "below" ? a.lastX : a.firstX;
+    const wanted = cardPlace === "below" ? a.bottom + gap : a.top - gap - ch2;
+    const top = Math.min(Math.max(wanted, m), Math.max(m, vh - ch2 - m));
+    const left = Math.min(Math.max(x - cw / 2, m), Math.max(m, vw - cw - m));
+    const covers = cardPlace === "below" ? top < a.bottom + 4 : top + ch2 > a.top - 4;
+
+    card.style.top = top + "px";
+    card.style.left = left + "px";
+    card.style.setProperty("--ax", Math.min(Math.max(x - left, 28), cw - 28) + "px");
+    card.classList.toggle("below", cardPlace === "below" && !covers);
+    card.classList.toggle("above", cardPlace === "above" && !covers);
+    card.classList.add("placed");
+  }
+
+  function openCard(kind, title, original, withLang = false) {
     closeCard();
     ensureHost();
-    card = h("section", "ui card");
+    cardKind = kind;
+    anchor = pendingAnchor;
+    cardPlace = null;
+    card = h("section", `ui card k-${kind}`);
     card.setAttribute("role", "dialog");
     card.setAttribute("aria-label", title);
     const head = h("header");
@@ -400,17 +516,31 @@
     x.setAttribute("aria-label", "Close");
     x.addEventListener("click", closeCard);
     head.append(x);
-    card.append(head);
+    const body = cardBody = h("div", "cbody");
     if (original) {
       const q = h("p", "quote");
       q.append(h("span", "", clean(original, 160)));
-      card.append(q);
+      body.append(q);
+    }
+    let select = null;
+    if (withLang) { // translation card: pick which language to translate into
+      const row = h("label", "langrow");
+      row.append(h("span", "", "Translate into"));
+      select = h("select", "langsel");
+      for (const [code, name] of LANGUAGES) select.add(new Option(name, code));
+      row.append(select);
+      body.append(row);
     }
     const out = h("div", "out");
+    const extras = h("div", "extras"); // Wikipedia meaning or tricky words, added after the main answer
     const foot = h("div", "foot");
-    card.append(out, foot);
+    body.append(out, extras);
+    card.append(head, body, foot);
     shadow.append(card);
-    return { out, foot };
+    placeCard();
+    cardObserver = new ResizeObserver(placeCard);
+    cardObserver.observe(card);
+    return { out, extras, foot, select };
   }
 
   function setLoading(out, text) {
@@ -434,7 +564,7 @@
   function runAction(action, text) {
     removeToolbar();
     if (action === "listen") {
-      const { out, foot } = openCard("Reading aloud", text);
+      const { out, foot } = openCard("listen", "Reading aloud", text);
       out.textContent = "Playing the selected text.";
       const stop = iconButton("stop", "Stop");
       stop.addEventListener("click", () => { speechSynthesis.cancel(); closeCard(); });
@@ -445,27 +575,106 @@
     runAsk(action, text);
   }
 
+  function wikiSection(it) {
+    const s = h("div", "sec wiki");
+    s.append(h("span", "tag", it.source));
+    if (it.description) s.append(h("div", "desc", it.description));
+    s.append(h("p", "", it.text));
+    if (it.url) {
+      const a = h("a", "", "Read more ↗");
+      a.href = it.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      s.append(a);
+    }
+    return s;
+  }
+
+  function wordsSection(words) {
+    const s = h("div", "sec tricky");
+    s.append(h("span", "tag", "Tricky words"));
+    const ul = h("ul", "words");
+    for (const w of words) {
+      const li = h("li");
+      li.append(h("b", "", w.word), document.createTextNode(w.meaning));
+      ul.append(li);
+    }
+    s.append(ul);
+    return s;
+  }
+
+  // A small "Looking up…" row that is swapped for the result, or quietly removed if nothing came back.
+  async function addExtra(extras, mine, label, request, build) {
+    const row = h("div", "load small");
+    row.append(h("div", "spin"), h("span", "", label));
+    extras.append(row);
+    let resp = null;
+    try { resp = await chrome.runtime.sendMessage(request); } catch {}
+    if (mine !== askToken || !extras.isConnected) return;
+    const node = resp?.ok ? build(resp) : null;
+    node ? row.replaceWith(node) : row.remove();
+  }
+
   async function runAsk(task, text) {
-    const { out, foot } = openCard(task === "translate" ? "Translation" : "In plain words", text);
-    const mine = askToken;
-    setLoading(out, task === "translate" ? "Translating…" : "Working it out…");
-    let resp;
-    try {
-      resp = await chrome.runtime.sendMessage({ type: "ASK", task, text, pageTitle: document.title });
-    } catch {
-      resp = { error: "Margin was updated. Reload this tab and try again." };
-    }
-    if (mine !== askToken) return; // a newer request replaced this card
-    out.replaceChildren();
-    if (resp?.ok) {
-      out.textContent = resp.text;
-      if (resp.note) out.after(h("p", "mnote", resp.note));
-      resultButtons(foot, resp.text, (await store()).preferredLanguage);
-    } else if (resp?.needsKey) {
-      out.textContent = resp.message || "This needs an Anthropic API key. Click the Margin icon in your toolbar, open Settings and paste it in.";
-    } else {
-      out.textContent = resp?.error || "Something went wrong. Try again.";
-    }
+    const translating = task === "translate";
+    const { out, extras, foot, select } = openCard(task, translating ? "Translation" : "In plain words", text, translating);
+    const body = cardBody;
+    const opened = askToken;
+    const multi = /\s/.test(text.trim());
+
+    const fetchAnswer = async (target) => {
+      const mine = ++askToken; // a newer request (or a closed card) makes older answers stale
+      out.replaceChildren();
+      extras.replaceChildren();
+      foot.replaceChildren();
+      body.querySelector(".mnote")?.remove();
+      setLoading(out, translating ? "Translating…" : "Working it out…");
+
+      // One word: also fetch its meaning from Wikipedia/Wiktionary, alongside the main request so it never delays it.
+      if (!multi) {
+        addExtra(extras, mine, "Checking Wikipedia…", { type: "WIKI", text, pageLang: document.documentElement.lang || "" },
+          (r) => {
+            if (!r.items?.length) return null;
+            const box = h("div");
+            r.items.forEach((it) => box.append(wikiSection(it)));
+            return box;
+          });
+      }
+
+      let resp;
+      try {
+        resp = await chrome.runtime.sendMessage({ type: "ASK", task, text, pageTitle: document.title, targetLang: target });
+      } catch {
+        resp = { error: "Margin was updated. Reload this tab and try again." };
+      }
+      if (mine !== askToken) return; // a newer request replaced this one
+      out.replaceChildren();
+      if (resp?.ok) {
+        out.textContent = resp.text;
+        if (resp.note) out.after(h("p", "mnote", resp.note));
+        resultButtons(foot, resp.text, target || (await store()).preferredLanguage);
+        if (multi) {
+          // Longer text: difficult words are explained at the end. With an API key they arrive with the answer;
+          // in free mode they are looked up in a dictionary.
+          if (Array.isArray(resp.words)) { if (resp.words.length) extras.append(wordsSection(resp.words)); }
+          else addExtra(extras, mine, "Finding tricky words…", { type: "WORDS", text },
+            (r) => (r.words?.length ? wordsSection(r.words) : null));
+        }
+      } else if (resp?.needsKey) {
+        out.textContent = resp.message || "This needs an Anthropic API key. Click the Margin icon in your toolbar, open Settings and paste it in.";
+      } else {
+        out.textContent = resp?.error || "Something went wrong. Try again.";
+      }
+    };
+
+    if (!select) return fetchAnswer("");
+    // The picker starts on the language chosen in the popup's settings.
+    setLoading(out, "Translating…");
+    const { preferredLanguage } = await store();
+    if (opened !== askToken) return; // card was closed or replaced meanwhile
+    select.value = preferredLanguage;
+    select.addEventListener("change", () => fetchAnswer(select.value));
+    return fetchAnswer(select.value);
   }
 
   /* ---------- page guide panel ---------- */
@@ -634,9 +843,18 @@
     if (e.shiftKey && /^Arrow/.test(e.key)) maybeShowToolbar();
   });
   document.addEventListener("mousedown", (e) => {
-    if (e.target !== host) removeToolbar();
+    if (e.target === host) return;
+    removeToolbar();
+    if (card) closeCard(); // clicking away from the card dismisses it
   });
-  window.addEventListener("scroll", removeToolbar, { passive: true, capture: true });
+  // The card follows its text while the page scrolls or resizes.
+  let placeRaf = 0;
+  const repositionCard = () => {
+    if (!card || placeRaf) return;
+    placeRaf = requestAnimationFrame(() => { placeRaf = 0; placeCard(); });
+  };
+  window.addEventListener("scroll", () => { removeToolbar(); repositionCard(); }, { passive: true, capture: true });
+  window.addEventListener("resize", repositionCard);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     removeToolbar();
