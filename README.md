@@ -133,12 +133,12 @@ We believe technology should make the internet more accessible, understandable a
 
 <div align="center">
 
-| Team Member | Role |
+| Team Member | Github Username |
 |:---:|:---:|
-| **Advait** | Project Leader |
-| **Devansh** | Frontend Development |
-| **Omkar** | API deployement |
-| **Atishay** | AI & Feature Development |
+| **Advait** | advaitFlux |
+| **Devansh** | deva23015 |
+| **Omkar** | leluchvigeass-svg |
+| **Atishay** | atishya-jain-1708 |
 
 </div>
 
