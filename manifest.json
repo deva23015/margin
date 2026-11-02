@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Margin: read the web in your language",
+  "version": "1.0.0",
+  "description": "Select text to translate, explain or hear it. Right-click any page for a plain-language guide to its buttons and forms.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://api.mymemory.translated.net/*",
+    "https://api.dictionaryapi.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Margin",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "commands": {
+    "explain-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Explain this page"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

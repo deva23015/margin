@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Margin</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <img src="icons/icon48.png" width="32" height="32" alt="">
+      <div>
+        <h1>Margin</h1>
+        <p id="state" class="state">Checking setup…</p>
+      </div>
+    </header>
+
+    <button id="guide" class="primary" type="button">
+      <span class="primary-title">Explain this page</span>
+      <span class="primary-sub">What the buttons and forms do, and what to click next</span>
+      <kbd>Alt+Shift+E</kbd>
+    </button>
+
+    <section aria-labelledby="sel-h">
+      <h2 id="sel-h">Selected text</h2>
+      <div class="trio">
+        <button id="translate" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+          Translate
+        </button>
+        <button id="explain" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4"/></svg>
+          Explain
+        </button>
+        <button id="listen" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+          Listen
+        </button>
+      </div>
+      <p class="tip">Or just highlight text on any page and use the toolbar that appears.</p>
+    </section>
+
+    <section id="result" class="result" aria-live="polite" hidden>
+      <p id="resultText"></p>
+      <div class="result-actions" id="resultActions" hidden>
+        <button id="play" type="button" class="ghost">Listen</button>
+        <button id="copy" type="button" class="ghost">Copy</button>
+      </div>
+    </section>
+
+    <details id="settings">
+      <summary>Settings</summary>
+      <div class="fields">
+        <label for="language">Your language</label>
+        <select id="language"></select>
+        <p class="hint">Translations, explanations and page guides are written in this language.</p>
+
+        <label>On-device AI <span class="opt">(free, no key)</span></label>
+        <p id="localState" class="hint">Checking…</p>
+        <button id="localBtn" type="button" class="ghost" hidden>Download model</button>
+
+        <label for="key">Anthropic API key</label>
+        <input id="key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+
+        <label for="model">Model <span class="opt">(optional)</span></label>
+        <input id="model" placeholder="claude-sonnet-4-6" autocomplete="off" spellcheck="false">
+
+        <div class="save-row">
+          <button id="save" type="button" class="solid">Save</button>
+          <span id="saved" role="status"></span>
+        </div>
+        <p class="hint">Short text translates and explains for free, with no key. Long text, full explanations and page guides need one. Your key stays in this browser. Free mode sends the selected text to MyMemory and dictionaryapi.dev. With a key, the selected text or the page's title, headings, visible text and button labels go to Anthropic. Anything typed into form fields is never read.</p>
+      </div>
+    </details>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
