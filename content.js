@@ -292,7 +292,7 @@
   .x:hover{background:var(--soft);color:var(--ink)}
   .quote{margin:8px 0 10px;padding:0;color:var(--mute);font-size:12.5px;line-height:1.45;
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .quote span{background:linear-gradient(transparent 55%,color-mix(in srgb,var(--mark) 75%,transparent) 55%)}
+  .quote span{color:var(--ink);text-decoration:underline;text-decoration-color:var(--teal);text-decoration-thickness:2px;text-underline-offset:3px}
   .mnote{margin:10px 0 0;font-size:12px;color:var(--mute)}
   .out{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.55;max-height:46vh;overflow:auto}
   .foot{display:flex;gap:6px;margin-top:12px}
