@@ -1,4 +1,9 @@
 <div align="center">
+  <img src="assets/banner.png" alt="Margin - Read the web in your own language" width="100%">
+</div>
+
+
+<div align="center">
 
 <img src="icons/icon128.png" alt="Margin logo" width="96" height="96">
 
