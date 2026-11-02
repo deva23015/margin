@@ -118,7 +118,7 @@ Chrome Extension (Manifest V3) · vanilla JavaScript, no build step · Google Ge
 
 ## Team
 
-Built for a hackathon by **Your Team Name**: add names and links here.
+Built for a hackathon by **Ghostriderzz**: add names and links here.
 
 ## License
 
