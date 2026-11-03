@@ -57,7 +57,7 @@ Copy-pasting into a translator breaks your flow, and most tools never tell you w
 2. Open `chrome://extensions` and switch on **Developer mode**.
 3. Click **Load unpacked** and select the Margin folder.
 4. *(Optional, for long text and AI page guides)* Click the Margin icon → **Settings**, paste a free [Gemini API key](https://aistudio.google.com/apikey) and press **Save**.
-5. *(Optional, free and offline)* Prefer no API key? Open **Settings → On-device AI** and press **Download model**. This downloads Chrome's built-in Gemini Nano (a one-time download of a few GB) so Margin can explain sentences on your device, privately and offline. Keep the popup open until it finishes. Chrome needs a recent desktop version and about 22 GB of free disk space, and if your computer can't run it, Margin still works in free mode.
+5. *(Optional, free and offline)* Prefer no API key? Open **Settings → On-device AI** and press **Download model**. This downloads Chrome's built-in Gemini Nano (a one-time download of a few GB) so Margin can explain sentences on your device, privately and offline. Keep the popup open until it finishes. Chrome needs a recent desktop version and about 22 GB of free disk space, and if your computer can't run it, Margin still works in Basic Guide mode.
    
 Pages that were already open need a reload for the selection toolbar. The popup and right-click menu work immediately.
 
