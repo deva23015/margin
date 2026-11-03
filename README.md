@@ -57,7 +57,7 @@ Copy-pasting into a translator breaks your flow, and most tools never tell you w
 2. Open `chrome://extensions` and switch on **Developer mode**.
 3. Click **Load unpacked** and select the Margin folder.
 4. *(Optional, for long text and AI page guides)* Click the Margin icon → **Settings**, paste a free [Gemini API key](https://aistudio.google.com/apikey) and press **Save**.
-5. *(Optional, free and offline)* Prefer no API key? Open **Settings → On-device AI** and press **Download model**. This downloads Chrome's built-in Gemini Nano (a one-time download of a few GB) so Margin can explain sentences on your device, privately and offline. Keep the popup open until it finishes. Chrome needs a recent desktop version and a few GB of free disk space, and if your computer can't run it, Margin still works in Basic Guide mode.
+5. *(Optional, free and offline)* Prefer no API key? Open **Settings → On-device AI** and press **Download model**. This downloads Chrome's built-in Gemini Nano (a one-time download of a few GB) so Margin can explain sentences on your device, privately and offline. Keep the popup open until it finishes. Chrome needs a recent desktop version and roughly 22 GB of free disk space, and if your computer can't run it, Margin still works in Basic Guide mode.
    
 Pages that were already open need a reload for the selection toolbar. The popup and right-click menu work immediately.
 
@@ -70,7 +70,7 @@ Margin is useful before you set anything up.
 | **Free** (no key) | Short text via MyMemory | Single words via a dictionary; sentences via Chrome's on-device AI | Rule-based guide, works offline |
 | **With Gemini key** | Any length | Fuller plain-language explanations | AI guide written for the specific page |
 
-**On-device AI (optional):** Chrome's built-in model (Gemini Nano) can explain sentences for free, offline and privately. It needs a recent desktop Chrome and a few GB of free disk space. Turn it on in Settings.
+**On-device AI (optional):** Chrome's built-in model (Gemini Nano) can explain sentences for free, offline and privately. It needs a recent desktop Chrome and roughly 22 GB of free disk space. Turn it on in Settings.
 
 ## How it works
 
