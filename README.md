@@ -70,7 +70,7 @@ Margin is useful before you set anything up.
 | **Free** (no key) | Short text via MyMemory | Single words via a dictionary; sentences via Chrome's on-device AI | Rule-based guide, works offline |
 | **With Gemini key** | Any length | Fuller plain-language explanations | AI guide written for the specific page |
 
-**On-device AI (optional):** Chrome's built-in model (Gemini Nano) can explain sentences for free, offline and privately. It needs a recent desktop Chrome and roughly 22 GB of free disk space. Turn it on in Settings.
+**On-device AI (optional):** Chrome's built-in model (Gemini Nano) can explain sentences for free, offline and privately. It needs a recent desktop Chrome and a few GB of free disk space. Turn it on in Settings.
 
 ## How it works
 
