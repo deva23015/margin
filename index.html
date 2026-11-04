@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margin: read the web in your language</title>
+<meta name="description" content="A Chrome extension that translates, explains and reads aloud any text, and guides you through confusing pages. Powered by Google Gemini.">
+<meta property="og:title" content="Margin: read the web in your language">
+<meta property="og:description" content="Translate, explain and hear any text. Get a plain-language guide to any page's buttons and forms.">
+<link rel="icon" href="icons/icon48.png">
+<style>
+*{box-sizing:border-box}
+:root{--ink:#0b0b0f;--paper:#fff;--mute:#2d3240;--blue:#2b59ff;--pink:#ff4d94;--yellow:#ffd60a;--cyan:#6fe6ff;--green:#19e68c;--orange:#ffb23f;--shadow:6px 6px 0 var(--ink)}
+html{scroll-behavior:smooth}
+body{margin:0;background:#fffdf5;color:var(--ink);font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+
+/* nav */
+nav{border-bottom:3px solid var(--ink);background:var(--paper);position:sticky;top:0;z-index:5}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px;letter-spacing:-.03em;text-decoration:none}
+.brand img{width:34px;height:34px;border:3px solid var(--ink);border-radius:9px;box-shadow:3px 3px 0 var(--ink)}
+.links{display:flex;gap:18px;align-items:center;font-weight:800;font-size:15px}
+.links a{text-decoration:none}
+.links a:hover{text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:4px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;border:3px solid var(--ink);border-radius:14px;padding:14px 22px;font-weight:900;font-size:17px;text-decoration:none;background:var(--blue);color:#fff;box-shadow:var(--shadow);transition:transform .08s,box-shadow .08s}
+.btn:hover{transform:translate(-2px,-2px);box-shadow:8px 8px 0 var(--ink)}
+.btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.btn.alt{background:var(--yellow);color:var(--ink)}
+.btn.small{padding:8px 14px;font-size:14px;border-radius:10px;box-shadow:3px 3px 0 var(--ink)}
+
+/* hero */
+.hero{padding:64px 0 72px;border-bottom:3px solid var(--ink);background:
+  radial-gradient(circle at 12% 20%,rgba(111,230,255,.5) 0 90px,transparent 91px),
+  radial-gradient(circle at 92% 82%,rgba(255,77,148,.35) 0 120px,transparent 121px),#fffdf5}
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+.tag{display:inline-block;border:3px solid var(--ink);background:var(--green);border-radius:99px;padding:3px 14px;font-weight:900;font-size:13px;letter-spacing:.06em;text-transform:uppercase;box-shadow:3px 3px 0 var(--ink)}
+h1{margin:18px 0 14px;font-size:clamp(40px,6vw,68px);line-height:1.02;letter-spacing:-.04em;font-weight:900}
+h1 mark{background:var(--yellow);padding:0 8px;border:3px solid var(--ink);border-radius:10px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.lead{font-size:20px;font-weight:550;max-width:520px;margin:0 0 28px}
+.cta{display:flex;gap:16px;flex-wrap:wrap}
+.fine{margin:18px 0 0;font-size:14px;font-weight:650;color:var(--mute)}
+
+/* mock UI in hero */
+.mock{position:relative;min-height:380px}
+.page{border:3px solid var(--ink);border-radius:16px;background:var(--paper);box-shadow:var(--shadow);padding:20px 22px}
+.page .bar{display:flex;gap:6px;margin-bottom:14px}
+.page .bar i{width:11px;height:11px;border-radius:50%;border:2px solid var(--ink);background:var(--yellow)}
+.page .bar i:nth-child(2){background:var(--pink)}.page .bar i:nth-child(3){background:var(--cyan)}
+.page p{margin:0;font-size:16px;line-height:1.7}
+.page .hi{background:var(--yellow);padding:1px 4px;border-radius:4px;font-weight:700}
+.tb{position:absolute;left:24px;top:132px;display:flex;gap:6px;padding:6px;background:var(--paper);border:3px solid var(--ink);border-radius:14px;box-shadow:var(--shadow)}
+.tb b{border:2px solid var(--ink);border-radius:9px;padding:5px 11px;font-size:13px;font-weight:800}
+.tb b:nth-child(1){background:var(--blue);color:#fff}.tb b:nth-child(2){background:var(--pink)}.tb b:nth-child(3){background:var(--yellow)}
+.card{position:absolute;right:-6px;bottom:0;width:86%;background:var(--paper);border:3px solid var(--ink);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+.card header{background:var(--pink);border-bottom:3px solid var(--ink);padding:8px 14px;font-weight:900;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+.card div{padding:12px 14px 14px;font-size:15px;font-weight:550}
+.card .words{margin:10px 0 0;padding:8px 10px;background:var(--orange);border:2px solid var(--ink);border-radius:10px;font-size:13.5px}
+
+/* sections */
+section{padding:76px 0;border-bottom:3px solid var(--ink)}
+h2{margin:0 0 10px;font-size:clamp(30px,4vw,44px);letter-spacing:-.03em;line-height:1.1;font-weight:900}
+.sub{margin:0 0 40px;font-size:19px;font-weight:550;max-width:640px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.tile{border:3px solid var(--ink);border-radius:16px;padding:22px;background:var(--paper);box-shadow:var(--shadow)}
+.tile .ic{display:grid;place-items:center;width:46px;height:46px;border:3px solid var(--ink);border-radius:12px;font-size:22px;margin-bottom:12px}
+.tile h3{margin:0 0 6px;font-size:20px;font-weight:900}
+.tile p{margin:0;font-size:16px;font-weight:500;color:var(--mute)}
+.c1 .ic{background:var(--blue)}.c2 .ic{background:var(--pink)}.c3 .ic{background:var(--yellow)}
+.c4 .ic{background:var(--cyan)}.c5 .ic{background:var(--orange)}.c6 .ic{background:var(--green)}
+
+.problem{background:var(--yellow)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.quote{border:3px solid var(--ink);border-radius:16px;background:var(--paper);padding:22px;box-shadow:var(--shadow);font-size:18px;font-weight:600}
+.quote small{display:block;margin-top:10px;font-size:14px;font-weight:700;color:var(--mute)}
+
+.demo{background:var(--cyan)}
+.videos{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.videos figure{margin:0}
+.videos figcaption{margin-top:12px;display:inline-block;border:3px solid var(--ink);background:var(--paper);border-radius:99px;padding:2px 14px;font-weight:900;font-size:14px;box-shadow:3px 3px 0 var(--ink)}
+.video{border:3px solid var(--ink);border-radius:16px;box-shadow:var(--shadow);background:var(--ink);overflow:hidden;aspect-ratio:16/9}
+.video iframe{width:100%;height:100%;border:0;display:block}
+.video .ph{height:100%;display:grid;place-items:center;color:#fff;text-align:center;padding:20px;font-weight:800}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:28px}
+.shots img{width:100%;border:3px solid var(--ink);border-radius:14px;box-shadow:var(--shadow);background:var(--paper)}
+
+.steps{counter-reset:s;list-style:none;margin:0;padding:0;display:grid;gap:16px;max-width:760px}
+.steps li{counter-increment:s;position:relative;border:3px solid var(--ink);border-radius:14px;background:var(--paper);padding:16px 18px 16px 70px;box-shadow:4px 4px 0 var(--ink);font-weight:600}
+.steps li::before{content:counter(s);position:absolute;left:16px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:var(--pink);border:3px solid var(--ink);display:grid;place-items:center;font-weight:900}
+.steps code,.mini code{background:#eef0f6;border:2px solid var(--ink);border-radius:6px;padding:0 6px;font-size:.9em}
+.steps .opt{font-weight:500;color:var(--mute)}
+
+.modes{width:100%;border-collapse:separate;border-spacing:0;border:3px solid var(--ink);border-radius:16px;overflow:hidden;background:var(--paper);box-shadow:var(--shadow);font-size:16px}
+.modes th,.modes td{padding:14px 16px;text-align:left;vertical-align:top;border-bottom:2px solid var(--ink)}
+.modes tr:last-child td{border-bottom:0}
+.modes th{background:var(--ink);color:#fff;font-weight:800}
+.modes td:first-child{font-weight:900;background:var(--yellow);width:18%}
+
+.privacy{background:var(--green)}
+.privacy ul{margin:0;padding:0;list-style:none;display:grid;gap:12px;max-width:760px}
+.privacy li{border:3px solid var(--ink);border-radius:12px;background:var(--paper);padding:12px 16px;font-weight:600}
+
+.final{text-align:center;background:var(--blue);color:#fff}
+.final h2{color:#fff}
+.final .sub{margin-left:auto;margin-right:auto;color:#fff}
+.final .cta{justify-content:center}
+
+footer{background:var(--ink);color:#fff;padding:28px 0;font-size:15px;font-weight:600}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{color:var(--yellow)}
+
+@media (max-width:860px){
+  .hero .wrap,.two,.shots,.videos{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr 1fr}
+  .mock{min-height:340px}
+  .links a:not(.btn){display:none}
+}
+@media (max-width:560px){
+  .grid{grid-template-columns:1fr}
+  .modes{font-size:14px}.modes th,.modes td{padding:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icons/icon48.png" alt="">Margin</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#demo">Demo</a>
+      <a href="#install">Install</a>
+      <a href="#privacy">Privacy</a>
+      <a class="btn small" href="https://github.com/deva23015/margin">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <span class="tag">Chrome extension · Powered by Gemini</span>
+      <h1>Read the web <mark>in your language.</mark></h1>
+      <p class="lead">Highlight any text to translate it, explain it in plain words, or hear it read aloud. Press one shortcut and Margin tells you what every button on the page actually does.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/deva23015/margin/releases/latest">⬇ Download for Chrome</a>
+        <a class="btn alt" href="#demo">▶ Watch the demo</a>
+      </div>
+      <p class="fine">Free, open source, works without an API key. Hindi, Tamil, Bengali, Telugu, Marathi, Urdu, Spanish, French, German and English.</p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="page">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <p>Please review the terms before you proceed. <span class="hi">The subscription renews automatically unless cancelled</span> at least 24 hours prior to the end of the period.</p>
+      </div>
+      <div class="tb"><b>Translate</b><b>Explain</b><b>Listen</b></div>
+      <div class="card">
+        <header>In plain words</header>
+        <div>This plan charges you again every period until you cancel it, and you must cancel a day before it renews.
+          <div class="words"><strong>Tricky words:</strong> renews: starts again</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="problem">
+  <div class="wrap">
+    <h2>The web assumes you read English and know interfaces.</h2>
+    <p class="sub">Millions of people don't. Copy-pasting into a translator breaks your flow, and nobody tells you what a button will do.</p>
+    <div class="two">
+      <div class="quote">“I can read a bit of English, but legal terms and checkout pages lose me.”<small>A Hindi speaker, on any English site</small></div>
+      <div class="quote">“Which of these ten buttons charges my card?”<small>A first-time online shopper</small></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Two tools, one extension.</h2>
+    <p class="sub">A toolbar for the text you select, and a guide for the page you're on.</p>
+    <div class="grid">
+      <div class="tile c1"><div class="ic">🌐</div><h3>Translate</h3><p>A card appears right next to your selection, with a picker for any supported language.</p></div>
+      <div class="tile c2"><div class="ic">💡</div><h3>Explain</h3><p>Hard sentences, jargon and tone, rewritten in plain, friendly words in your language.</p></div>
+      <div class="tile c3"><div class="ic">🔊</div><h3>Listen</h3><p>Hear the selection in a voice that fits its script, from Devanagari to Tamil.</p></div>
+      <div class="tile c4"><div class="ic">📖</div><h3>Word meanings</h3><p>Select one word to see its meaning from Wiktionary and Wikipedia, with a link to read more.</p></div>
+      <div class="tile c5"><div class="ic">🧩</div><h3>Tricky words</h3><p>Select a longer passage and its difficult words are listed with short meanings.</p></div>
+      <div class="tile c6"><div class="ic">🧭</div><h3>Page guide</h3><p>Press <b>Alt+Shift+E</b>: every button and form explained, what to do next, with warnings for anything that costs money or can't be undone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="demo" id="demo">
+  <div class="wrap">
+    <h2>See it in action.</h2>
+    <p class="sub">Two short walkthroughs: what Margin does, and how it works.</p>
+    <div class="videos">
+      <figure>
+        <div class="video" id="video1"></div>
+        <figcaption>Video 1: Text Translation & Explanation</figcaption>
+      </figure>
+      <figure>
+        <div class="video" id="video2"></div>
+        <figcaption>Video 2: Page Guide</figcaption>
+      </figure>
+    </div>
+    <div class="shots">
+      <img src="docs/selection-card.png" alt="Margin's selection toolbar and result card" onerror="this.remove()">
+      <img src="docs/page-guide.png" alt="Margin's page guide overlay" onerror="this.remove()">
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install in under a minute.</h2>
+    <p class="sub">No store account needed. Margin loads straight into Chrome.</p>
+    <ol class="steps">
+      <li><a href="https://github.com/deva23015/margin/releases/latest"><b>Download the latest release</b></a> (<code>margin-v1.0.0.zip</code>) and unzip it.</li>
+      <li>Open <code>chrome://extensions</code> and switch on <b>Developer mode</b>.</li>
+      <li>Click <b>Load unpacked</b> and select the unzipped Margin folder.</li>
+      <li><span class="opt">(Optional, for long text and AI page guides)</span> Click the Margin icon → <b>Settings</b>, paste a free <a href="https://aistudio.google.com/apikey">Gemini API key</a> and press <b>Save</b>.</li>
+      <li><span class="opt">(Optional, free and offline)</span> In <b>Settings → On-device AI</b>, press <b>Download model</b> to get Chrome's built-in Gemini Nano (a few GB, needs about 22 GB of free disk space and a recent desktop Chrome).</li>
+    </ol>
+    <h2 style="margin-top:56px">Works with or without a key.</h2>
+    <p class="sub">Margin is useful the moment it's installed.</p>
+    <table class="modes">
+      <thead><tr><th></th><th>Translate</th><th>Explain</th><th>Page guide</th></tr></thead>
+      <tbody>
+        <tr><td>Free</td><td>Short text through MyMemory</td><td>Single words via a dictionary; sentences via Chrome's on-device AI</td><td>Rule-based guide, works offline</td></tr>
+        <tr><td>With Gemini key</td><td>Any length</td><td>Fuller plain-language explanations</td><td>AI guide written for that exact page</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="privacy" id="privacy">
+  <div class="wrap">
+    <h2>Private by design.</h2>
+    <p class="sub">Margin only acts when you ask it to.</p>
+    <ul>
+      <li>🔒 Your API key stays in your browser. It only goes to Google when you use AI features.</li>
+      <li>⌨️ Anything typed into form fields, including passwords, is never read or sent.</li>
+      <li>🛡️ Page text is passed to the model as untrusted data, so a web page can't give it orders.</li>
+      <li>📄 Read the full <a href="https://github.com/deva23015/margin/blob/main/PRIVACY.md">privacy policy</a>.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap">
+    <h2>Make the web readable for everyone.</h2>
+    <p class="sub">Free, open source, and ready to install.</p>
+    <div class="cta">
+      <a class="btn alt" href="https://github.com/deva23015/margin/releases/latest">⬇ Download Margin</a>
+      <a class="btn" style="background:var(--paper);color:var(--ink)" href="https://github.com/deva23015/margin">★ View on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Margin · built for a hackathon by <b>Your Team Name</b></span>
+    <span><a href="https://github.com/deva23015/margin">Source</a> · <a href="https://github.com/deva23015/margin/blob/main/LICENSE">MIT license</a></span>
+  </div>
+</footer>
+
+<script>
+// Paste each Google Drive file ID here (the long part of drive.google.com/file/d/<ID>/view).
+// Make sure both files are shared as "Anyone with the link can view".
+var VIDEOS = [
+  { id: "video1", fileId: "1McKil376CUdT_36gWru0Yko8zAvAB65q", title: "Margin demo video" },
+  { id: "video2", fileId: "10Gl7gN81p_2Utgqy4xUokmdP1lWEoITX", title: "Margin walkthrough video" }
+];
+VIDEOS.forEach(function (v) {
+  var box = document.getElementById(v.id);
+  if (v.fileId && v.fileId.indexOf("PASTE_") !== 0) {
+    var f = document.createElement("iframe");
+    f.src = "https://drive.google.com/file/d/" + encodeURIComponent(v.fileId) + "/preview";
+    f.allow = "autoplay; fullscreen";
+    f.allowFullscreen = true;
+    f.title = v.title;
+    box.appendChild(f);
+  } else {
+    box.innerHTML = '<div class="ph">Video goes here.<br>Add its Drive file ID at the bottom of index.html.</div>';
+  }
+});
+</script>
+</body>
+</html>
